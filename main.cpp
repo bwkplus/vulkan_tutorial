@@ -4,6 +4,7 @@
 #include <functional>
 #include <cstdlib>
 #include <vector>
+#include <optional>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -42,6 +43,13 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 	}
 }
 
+struct QueueFamilyIndices {
+	std::optional<uint32_t> graphicsFamily;
+	bool isComplete() {
+		return graphicsFamily.has_value();
+	}
+};
+
 class VulkanApplication {
 public:
 	void run() 
@@ -56,7 +64,8 @@ private:
 	GLFWwindow* window;
 	VkInstance instance;
 	VkDebugUtilsMessengerEXT debugMessenger;
-
+	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+	
 	void initWindow() {
 		glfwInit();
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -67,6 +76,50 @@ private:
 	void initVulkan(){
 		createInstance();
 		setupDebugMessenger();
+		pickPhysicalDevice();
+	}
+
+	void pickPhysicalDevice() {
+		uint32_t deviceCount = 0;
+		vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+		if (deviceCount == 0) {
+			throw std::runtime_error("failed to find GPU with vulkan support");
+		}
+		std::vector<VkPhysicalDevice> devices(deviceCount);
+		vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+		for (const auto& device : devices) {
+			if (isDeviceSuitable(device)) {
+				physicalDevice = device;
+				break;
+			}
+		}
+		if (physicalDevice == VK_NULL_HANDLE) {
+			throw std::runtime_error("failed to find GPU ");
+		}
+	}
+
+	bool isDeviceSuitable(VkPhysicalDevice device) {
+		QueueFamilyIndices indices = findQueueFamilies(device);
+		return indices.isComplete();
+	}
+
+	QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
+		QueueFamilyIndices indices;
+		uint32_t queueFamilyCount = 0;
+		vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+		std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+		vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+		int index = 0;
+		for (const auto& queueFamily : queueFamilies) {
+			if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+				indices.graphicsFamily = index;
+			}
+			if (indices.isComplete()) {
+				break;
+			}
+			index += 1;
+		}
+		return indices;
 	}
 
 	void createInstance() {
